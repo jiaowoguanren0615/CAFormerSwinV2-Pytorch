@@ -17,6 +17,25 @@ This is a warehouse for CAFormerSwinV2-Pytorch-model, can be used to train your 
 }
 ```
 
+```
+@inproceedings{li2022rethinking,
+  title={Rethinking Vision Transformers for MobileNet Size and Speed},
+  author={Li, Yanyu and Hu, Ju and Wen, Yang and Evangelidis, Georgios and Salahi, Kamyar and Wang, Yanzhi and Tulyakov, Sergey and Ren, Jian},
+  booktitle={Proceedings of the IEEE international conference on computer vision},
+  year={2023}
+}
+```
+
+```
+@article{li2022efficientformer,
+  title={Efficientformer: Vision transformers at mobilenet speed},
+  author={Li, Yanyu and Yuan, Geng and Wen, Yang and Hu, Ju and Evangelidis, Georgios and Tulyakov, Sergey and Wang, Yanzhi and Ren, Jian},
+  journal={Advances in Neural Information Processing Systems},
+  volume={35},
+  pages={12934--12949},
+  year={2022}
+}
+```
 
 ```
 @inproceedings{liu2021swinv2,
@@ -26,7 +45,6 @@ This is a warehouse for CAFormerSwinV2-Pytorch-model, can be used to train your 
   year={2022}
 }
 ```
-
 
 ```
 @inproceedings{liu2021Swin,
