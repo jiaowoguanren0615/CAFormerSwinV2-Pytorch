@@ -8,7 +8,7 @@ import torchvision
 torchvision.disable_beta_transforms_warning() # silence warning
 
 
-import torchvision.transforms.v2 as transforms
+import torchvision.transforms as transforms
 
 from torch.utils.data import Dataset
 
@@ -35,7 +35,7 @@ transform = transforms.Compose([
 target_transform = transforms.Compose([
     # transforms.PILToTensor(),
     transforms.Resize((224, 224)),
-    separate_class
+    # separate_class
 ])
 
 trans = transforms.Compose([
@@ -78,14 +78,14 @@ class KvasirDataSet(Dataset):
             img_path = self.img_files1[index]
             mask_path = self.mask_files1[index]
             data = Image.open(img_path)
-            label = Image.open(mask_path).convert('1')
+            label = Image.open(mask_path).convert('L')
             return trans(data), target_transform(trans(label))
         else:
             index = index - len(self.img_files1)
             img_path = self.img_files2[index]
             mask_path = self.mask_files2[index]
             data = Image.open(img_path)
-            label = Image.open(mask_path).convert('1')
+            label = Image.open(mask_path).convert('L')
             return trans(data), target_transform(trans(label))
 
     def __len__(self):

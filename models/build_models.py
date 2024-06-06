@@ -1,12 +1,13 @@
+import torch
 import torch.nn as nn
 from .build_architecture import StageModule, UperNetHead
 
 
 
 class MSCAEfficientFormerV2(nn.Module):
-    def __init__(self, img_size=224, num_classes=2, dim_list=[64, 128, 256, 512], num_layer_list=[4, 4, 18, 4],
+    def __init__(self, img_size=224, num_classes=2, dim_list=[64, 128, 256, 512], num_layer_list=[2, 2, 6, 2],
                  res_scale_init_value_list=[1.0, 1.0, 1.0, 1.0], resolution_list=[56, 28, 14, 7],
-                 kernel_size_list=[9, 7, 5, 3], stride_list=[7, 5, 3, 1], num_head_list=[2, 4, 8, 16],
+                 kernel_size_list=[9, 7, 5, 3], stride_list=[7, 5, 3, 1], num_head_list=[2, 4, 8, 8],
                  num_group_list=[1, 2, 4, 8], expansion_ratio_list=[4, 4, 4, 4], sr_ratio_list=[8, 4, 1 ,1], **kwargs):
         """
         img_size: resolution of image;
@@ -41,6 +42,9 @@ class MSCAEfficientFormerV2(nn.Module):
 
 
 # if __name__ == '__main__':
-#     from torchinfo import summary
 #     net = MSCAEfficientFormerV2()
-#     summary(net, input_size=(1, 3, 224, 224))
+#     # summary(net, input_size=(1, 3, 224, 224))
+#     x = torch.randn((1, 3, 224, 224))
+#     output = net(x)
+#     print(output.size())
+#     print(output.argmax(1).size())

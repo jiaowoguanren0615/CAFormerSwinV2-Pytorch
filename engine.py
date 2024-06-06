@@ -55,6 +55,8 @@ def train_one_epoch(model, optimizer, loss_fn, dataloader,
 def evaluate(args, model, dataloader, device, print_freq):
     model.eval()
 
+    mae_metric = utils.MeanAbsoluteError()
+    f1_metric = utils.F1Score()
     confmat = utils.ConfusionMatrix(args.num_classes)
     metric_logger = utils.MetricLogger(delimiter="  ")
     header = 'Test:'
@@ -64,15 +66,23 @@ def evaluate(args, model, dataloader, device, print_freq):
         labels = labels.to(device, non_blocking=True)
 
         # compute output
-        with torch.cuda.amp.autocast():
-            outputs = model(images)
-
+        # with torch.cuda.amp.autocast(): # TODO: ConfusionMatrix not implemented for 'Half' data
+        outputs = model(images)
+        # print('*************')
+        # print(labels.shape)  # [B, 2, img_size, img_size]
+        # print(outputs.shape) # [B, 2, img_size, img_size]
+        # print(outputs.argmax(1).shape) # [B, img_size, img_size]
         confmat.update(labels.flatten(), outputs.argmax(1).flatten())
+        mae_metric.update(outputs, labels)
+        f1_metric.update(outputs, labels)
 
     confmat.reduce_from_all_processes()
+    mae_metric.gather_from_all_processes()
+    f1_metric.reduce_from_all_processes()
+
     torch.cuda.empty_cache()
 
-    return confmat
+    return confmat, mae_metric, f1_metric
 
 
 

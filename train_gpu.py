@@ -27,19 +27,18 @@ def get_argparser():
     parser = argparse.ArgumentParser('Pytorch MSCA-EfficientFormer Model training and evaluation script', add_help=False)
 
     # Datset Options
-    # parser.add_argument("--data_root", type=str, default='./CityScapesDataset', help="path to Dataset")
-    parser.add_argument("--Kvasir_path", type=str, default='D:/MedicalSeg/Kvasir-SEG/',
+    parser.add_argument("--Kvasir_path", type=str, default='/mnt/d/MedicalSeg/Kvasir-SEG/',
                         help="path to Kvasir Dataset")
-    parser.add_argument("--ClinicDB_path", type=str, default='D:/MedicalSeg/CVC-ClinicDB/',
+    parser.add_argument("--ClinicDB_path", type=str, default='/mnt/d/MedicalSeg/CVC-ClinicDB/',
                         help="path to CVC-ClinicDBDataset")
     parser.add_argument("--img_size", type=int, default=224, help="input size")
     parser.add_argument("--ignore_label", type=int, default=255, help="the dataset ignore_label")
     parser.add_argument("--dataset", type=str, default='kvasir & CVC-ClinicDB',
                         choices=['cityscapes', 'pascal', 'coco', 'synapse', 'kvasir & CVC-ClinicDB'], help='Name of dataset')
-    parser.add_argument("--num_classes", type=int, default=2, help="num classes (default: 2 for kvasir & CVC-ClinicDB)")
+    parser.add_argument("--num_classes", type=int, default=1, help="num classes (default: 2 for kvasir & CVC-ClinicDB)")
     parser.add_argument("--pin_mem", type=bool, default=True, help="Dataloader ping_memory")
     parser.add_argument("--batch_size", type=int, default=4, help='batch size (default: 4)')
-    parser.add_argument("--val_batch_size", type=int, default=2, help='batch size for validation (default: 2)')
+    parser.add_argument("--val_batch_size", type=int, default=1, help='batch size for validation (default: 1)')
 
     # DA-TransUNet Options
     parser.add_argument("--model", type=str, default='MSCAEfficientFormerV2',
@@ -54,7 +53,7 @@ def get_argparser():
     parser.add_argument("--val_print_freq", type=int, default=50)
 
     # Loss Options
-    parser.add_argument("--loss_fn_name", type=str, default='OhemCrossEntropy')
+    parser.add_argument("--loss_fn_name", type=str, default='DiceBCELoss')
 
     # Optimizer & LR-scheduler Options
     parser.add_argument("--optimizer", type=str, default='adamw')
@@ -62,8 +61,8 @@ def get_argparser():
                         help='Clip gradient norm (default: None, no clipping)')
     parser.add_argument('--clip-mode', type=str, default='agc',
                         help='Gradient clipping mode. One of ("norm", "value", "agc")')
-    parser.add_argument("--lr", type=float, default=0.0003,
-                        help="learning rate (default: 0.0003)")
+    parser.add_argument("--lr", type=float, default=0.001,
+                        help="learning rate (default: 0.001)")
     parser.add_argument("--weight_decay", type=float, default=1e-5,
                         help='weight decay (default: 1e-5)')
 
@@ -92,10 +91,11 @@ def main(args):
     utils.init_distributed_mode(args)
 
     if not os.path.exists(args.save_weights_dir):
-        os.makedirs(args.save_weights_dir)
+        os.makedirs(args.save_weights_dir, exist_ok=True)
 
     # start = time.time()
     best_mIoU = 0.0
+    best_F1 = 0.0
     device = args.device
 
     results_file = "results{}.txt".format(datetime.datetime.now().strftime("%Y%m%d-%H%M%S"))
@@ -103,8 +103,11 @@ def main(args):
     train_set, valid_set = build_dataset(args)
 
     model = MSCAEfficientFormerV2(img_size=args.img_size, num_classes=args.num_classes)
-
     model = model.to(device)
+    n_p = sum([p.numel() for p in model.parameters() if p.requires_grad])
+    print('********ESTABLISH ARCHITECTURE********')
+    print(f'Model: {args.model}, Number of parameters: {n_p}')
+
 
     if args.distributed:
         sampler = DistributedSampler(train_set, dist.get_world_size(), dist.get_rank(), shuffle=True)
@@ -118,6 +121,10 @@ def main(args):
     valloader = DataLoader(valid_set, batch_size=args.val_batch_size, num_workers=args.num_workers,
                            drop_last=True, pin_memory=args.pin_mem)
 
+    # for a, b in trainloader:
+    #     print(a.size())
+    #     print(b.size())
+    #     break
 
     loss_fn = DiceBCELoss()
     optimizer = Lion(params=model.parameters(), lr=args.lr, weight_decay=args.weight_decay)
@@ -139,6 +146,7 @@ def main(args):
         model.load_state_dict(checkpoint['model_state'])
         scheduler.load_state_dict(checkpoint["scheduler_state"])
         best_mIoU = checkpoint['best_mIoU']
+        best_F1 = checkpoint['F1_Score']
         optimizer.load_state_dict(checkpoint["optimizer_state"])
         if 'scaler' in checkpoint:
             loss_scaler.load_state_dict(checkpoint['scaler'])
@@ -159,11 +167,15 @@ def main(args):
                                         epoch, device, args.train_print_freq, args.clip_grad, args.clip_mode,
                                         loss_scaler)
 
-        confmat = evaluate(args, model, valloader, device, args.val_print_freq)
+        confmat, mae_metric, f1_metric = evaluate(args, model, valloader, device, args.val_print_freq)
+        mae_info, f1_info = mae_metric.compute(), f1_metric.compute()
+        print(f"[epoch: {epoch}] val_MAE: {mae_info:.3f} val_maxF1: {f1_info:.3f}")
 
-        scheduler.step(epoch)
+        scheduler.step()
 
-        val_info = str(confmat)
+        # val_info = str(confmat) + '\n' + str(mae_info) + '\n' + str(f1_info)
+        val_info = f'{str(confmat)}\nMAE: {mae_info:.3f}\nF1-Score: {f1_info:.3f}'
+
         print(val_info)
 
         if dist.is_main_process():
@@ -179,13 +191,15 @@ def main(args):
         if match:
             mean_iou = float(match.group(1))
 
-        if mean_iou > best_mIoU:
-            best_mIoU = mean_iou
+        if f1_info > best_F1:
+            best_F1 = f1_info
             checkpoint_save = {
                 "model_state": model.state_dict(),
                 "optimizer_state": optimizer.state_dict(),
                 "scheduler_state": scheduler.state_dict(),
-                "best_mIoU": best_mIoU,
+                "best_mIoU": mean_iou,
+                "F1_Score": round(f1_info, 3),
+                "MAE": round(mae_info, 3),
                 "scaler": loss_scaler.state_dict()
             }
             torch.save(checkpoint_save, f'{args.save_weights_dir}/{args.model}_best_model_{best_mIoU}.pth')
