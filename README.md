@@ -2,6 +2,11 @@
 
 ***This is a warehouse for CAFormerSwinV2-Pytorch-model, including MSCA-EfficientFormer models, which can be used to train your medical-image-datasets for segmentation tasks.***
 
+## Preparation
+### Download Datasets
+[CVC-ClinicDB Dataset](https://www.kaggle.com/datasets/balraj98/cvcclinicdb?select=PNG)
+[Kvasir Dataset](https://www.kaggle.com/datasets/abdallahwagih/kvasir-dataset-for-classification-and-segmentation?select=kvasir-seg)
+
 ## Precautions
 Before you use the code to train your own data set, please first enter the ___train_gpu.py___ file and modify the ___Kvasir_path___, ___ClinicDB_path___, ___batch_size___, ___num_workers___ and ___num_classes___ parameters.  
 
