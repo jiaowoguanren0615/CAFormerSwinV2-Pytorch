@@ -1,8 +1,8 @@
 import torch.nn as nn
 import torch
-from Swin_blocks import RSIRWinLayerModule, RSIRWinModule, RSIRWinAttnModule, ConvFFNModule
-from GetingNet_blocks import GatingNetworkModule, GatingNetworkLayerModule, SpatialPriorModule
-from MSCA_blocks import DualPathAttentionDownSamplingModule, StemModule, MSCALayerModule, AgentAttnLayerModule, \
+from .Swin_blocks import RSIRWinLayerModule, RSIRWinModule, RSIRWinAttnModule, ConvFFNModule
+from .GetingNet_blocks import GatingNetworkModule, GatingNetworkLayerModule, SpatialPriorModule
+from .MSCA_blocks import DualPathAttentionDownSamplingModule, StemModule, MSCALayerModule, AgentAttnLayerModule, \
     DALayerModule, RevStemModule, DAModule
 
 

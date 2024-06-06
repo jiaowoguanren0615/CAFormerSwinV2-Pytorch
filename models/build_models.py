@@ -1,5 +1,5 @@
 import torch.nn as nn
-from build_architecture import StageModule, UperNetHead
+from .build_architecture import StageModule, UperNetHead
 
 
 

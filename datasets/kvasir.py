@@ -2,6 +2,7 @@ import torch
 from PIL import Image
 import glob
 import os
+import numpy as np
 
 import torchvision
 torchvision.disable_beta_transforms_warning() # silence warning
@@ -12,9 +13,6 @@ import torchvision.transforms.v2 as transforms
 from torch.utils.data import Dataset
 
 from random import sample
-import albumentations as A
-
-
 
 def preprocess(x):
     return x / 255
@@ -27,32 +25,30 @@ def separate_class(x):
     return torch.cat((first_dim, second_dim)) / 1
 
 
-def build_transform(img_size):
-    transform = transforms.Compose([
-        transforms.PILToTensor(),
-        transforms.Resize((img_size, img_size)),
-        preprocess,
-    ])
 
-    target_transform = transforms.Compose([
-        transforms.Resize((img_size // 4, img_size // 4)),
-        separate_class
-    ])
+transform = transforms.Compose([
+    transforms.PILToTensor(),
+    transforms.Resize((224, 224)),
+    preprocess,
+])
 
-    trans = A.Compose([
-        A.CenterCrop(img_size, img_size),
-        A.HorizontalFlip(),
-        A.VerticalFlip(),
-        A.Rotate(),
-        A.RandomBrightnessContrast(),
-        A.OneOf([A.GridDistortion(p=0.5)], p=0.8)
-    ])
-    return transform, target_transform, trans
+target_transform = transforms.Compose([
+    # transforms.PILToTensor(),
+    transforms.Resize((224, 224)),
+    separate_class
+])
+
+trans = transforms.Compose([
+    transforms.ToTensor(),
+    transforms.RandomRotation(30),
+    transforms.CenterCrop(224)
+])
+
 
 
 
 class KvasirDataSet(Dataset):
-    def __init__(self, Kvasir_folder, ClinicDB_folder, img_size=256, train_mode=False):
+    def __init__(self, Kvasir_folder, ClinicDB_folder, img_size=224, train_mode=False):
 
         super(KvasirDataSet, self).__init__()
         self.img_size = img_size
@@ -78,23 +74,19 @@ class KvasirDataSet(Dataset):
 
     def __getitem__(self, index):
 
-        transform, target_transform, trans = build_transform(self.img_size)
-
         if index < len(self.img_files1):
             img_path = self.img_files1[index]
             mask_path = self.mask_files1[index]
             data = Image.open(img_path)
             label = Image.open(mask_path).convert('1')
-            return transforms.functional.to_tensor(trans(data)), target_transform(
-                transforms.functional.to_tensor(trans(label)))
+            return trans(data), target_transform(trans(label))
         else:
             index = index - len(self.img_files1)
             img_path = self.img_files2[index]
             mask_path = self.mask_files2[index]
             data = Image.open(img_path)
             label = Image.open(mask_path).convert('1')
-            return transforms.functional.to_tensor(trans(data)), target_transform(
-                transforms.functional.to_tensor(trans(label)))
+            return trans(data), target_transform(trans(label))
 
     def __len__(self):
         return len(self.img_files1) + len(self.img_files2)
@@ -124,12 +116,14 @@ def build_dataset(args):
     train_ds = KvasirDataSet(
         args.Kvasir_path,
         args.ClinicDB_path,
+        args.img_size,
         train_mode=True
     )
 
     valid_ds = KvasirDataSet(
         args.Kvasir_path,
         args.ClinicDB_path,
+        args.img_size,
         train_mode=False
     )
     return train_ds, valid_ds

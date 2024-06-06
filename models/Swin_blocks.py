@@ -1,6 +1,6 @@
 import torch
 from torch import nn
-from MSCA_blocks import LPUModule, LayerNormProxy, StarReLU, Scale
+from .MSCA_blocks import LPUModule, LayerNormProxy, StarReLU, Scale
 
 
 class MLP(nn.Module):
