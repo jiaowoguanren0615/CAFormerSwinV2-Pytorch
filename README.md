@@ -1,12 +1,11 @@
 <h1 align='center'>CAFormerSwinV2-Pytorch</h1>
 
-This is a warehouse for CAFormerSwinV2-Pytorch-model, can be used to train your medical-image-datasets for segmentation tasks.
+***This is a warehouse for CAFormerSwinV2-Pytorch-model, including MSCA-EfficientFormer models, which can be used to train your medical-image-datasets for segmentation tasks.***
 
 ## Precautions
-Before you use the code to train your own data set, please first enter the ___train_gpu.py___ file and modify the ___Kvasir_path___, ___ClinicDB_path___, ___batch_size___,  ___data_len___, ___num_workers___ and ___nb_classes___ parameters. If you want to draw the confusion matrix and ROC curve, you only need to set the ___predict___ parameter to __True__.  
+Before you use the code to train your own data set, please first enter the ___train_gpu.py___ file and modify the ___Kvasir_path___, ___ClinicDB_path___, ___batch_size___, ___num_workers___ and ___num_classes___ parameters.  
 
 ## Train this model
-
 ### Parameters Meaning:
 ```
 1. nproc_per_node: <The number of GPUs you want to use on each node (machine/server)>
