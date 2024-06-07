@@ -20,6 +20,7 @@ from utils.optimizers import get_optimizer, Lion
 from utils import distributed_utils as dist
 import utils
 
+from terminaltables import AsciiTable
 from utils.utils import fix_seeds, setup_cudnn, cleanup_ddp, setup_ddp
 from engine import train_one_epoch, evaluate
 
@@ -224,11 +225,19 @@ def main(args):
     # writer.close()
     # end = time.gmtime(time.time() - start)
 
-    # table = [
-    #     ['Best mIoU', f"{best_mIoU:.2f}"],
-    #     ['Total Training Time', time.strftime("%H:%M:%S", end)]
-    # ]
-    # print(tabulate(table, numalign='right'))
+        TITLE = 'Validation Results'
+        TABLE_DATA = (
+            ('Mean Pixel Acc', 'Mean Iou', 'Mean F1 Score'),
+            ('{:.2f}'.format(mean_acc),
+             '{:.2f}'.format(mean_iou),
+             '{:.2f}'.format(mean_f1),
+             ),
+        )
+        table_instance = AsciiTable(TABLE_DATA, TITLE)
+        # table_instance.justify_columns[2] = 'right'
+        print()
+        print(table_instance.table)
+        print()
 
 
 if __name__ == '__main__':
