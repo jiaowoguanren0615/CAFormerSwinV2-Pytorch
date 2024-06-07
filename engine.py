@@ -1,4 +1,5 @@
 import torch
+import torch.nn as nn
 import math
 import sys
 from torch.nn import functional as F
@@ -6,15 +7,38 @@ from tqdm import tqdm
 from utils.metrics import Metrics
 import utils.distributed_utils as utils
 
+from utils.losses import dice_loss, build_target
 
 
-def train_one_epoch(model, optimizer, loss_fn, dataloader,
-                    epoch, device, print_freq, clip_grad, clip_mode, loss_scaler):
+def criterion(inputs, target, loss_weight=None, num_classes: int = 2, dice: bool = True, ignore_index: int = -100):
+    losses = {}
+    # 忽略target中值为255的像素，255的像素是目标边缘或者padding填充
+    loss = nn.functional.cross_entropy(inputs, target, ignore_index=ignore_index, weight=loss_weight)
+    if dice is True:
+        dice_target = build_target(target, num_classes, ignore_index)
+        loss += dice_loss(inputs, dice_target, multiclass=True, ignore_index=ignore_index)
+    losses['out'] = loss
+
+    if len(losses) == 1:
+        return losses['out']
+
+    return losses['out'] + 0.5 * losses['aux']
+
+
+
+def train_one_epoch(model, optimizer, dataloader,
+                    epoch, device, print_freq, clip_grad, clip_mode, loss_scaler, args):
     model.train()
 
     metric_logger = utils.MetricLogger(delimiter="  ")
     metric_logger.add_meter('lr', utils.SmoothedValue(window_size=1, fmt='{value:.6f}'))
     header = 'Epoch: [{}]'.format(epoch)
+
+    if args.num_classes == 2:
+        # 设置cross_entropy中背景和前景的loss权重(根据自己的数据集进行设置)
+        loss_weight = torch.as_tensor([1.0, 2.0], device=device)
+    else:
+        loss_weight = None
 
     for iter, (img, lbl) in enumerate(metric_logger.log_every(dataloader, print_freq, header)):
 
@@ -24,7 +48,7 @@ def train_one_epoch(model, optimizer, loss_fn, dataloader,
 
         with torch.cuda.amp.autocast():
             logits = model(img)
-            loss = loss_fn(logits, lbl)
+            loss = criterion(logits, lbl, loss_weight, num_classes=args.num_classes, ignore_index=args.ignore_index)
 
         loss_value = loss.item()
         if not math.isfinite(loss_value):
@@ -55,8 +79,7 @@ def train_one_epoch(model, optimizer, loss_fn, dataloader,
 def evaluate(args, model, dataloader, device, print_freq):
     model.eval()
 
-    mae_metric = utils.MeanAbsoluteError()
-    f1_metric = utils.F1Score()
+    metric = Metrics(args.num_classes, args.ignore_label, args.device)
     confmat = utils.ConfusionMatrix(args.num_classes)
     metric_logger = utils.MetricLogger(delimiter="  ")
     header = 'Test:'
@@ -68,21 +91,16 @@ def evaluate(args, model, dataloader, device, print_freq):
         # compute output
         # with torch.cuda.amp.autocast(): # TODO: ConfusionMatrix not implemented for 'Half' data
         outputs = model(images)
-        # print('*************')
-        # print(labels.shape)  # [B, 2, img_size, img_size]
-        # print(outputs.shape) # [B, 2, img_size, img_size]
-        # print(outputs.argmax(1).shape) # [B, img_size, img_size]
         confmat.update(labels.flatten(), outputs.argmax(1).flatten())
-        mae_metric.update(outputs, labels)
-        f1_metric.update(outputs, labels)
+        metric.update(outputs, labels.flatten())
+
 
     confmat.reduce_from_all_processes()
-    mae_metric.gather_from_all_processes()
-    f1_metric.reduce_from_all_processes()
+    metric.reduce_from_all_processes()
 
     torch.cuda.empty_cache()
 
-    return confmat, mae_metric, f1_metric
+    return confmat, metric
 
 
 

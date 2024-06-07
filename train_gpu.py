@@ -12,6 +12,7 @@ from timm.utils import NativeScaler
 from models.build_models import MSCAEfficientFormerV2
 
 from datasets import build_dataset
+from datasets.kvasir import get_transform
 
 from utils.losses import get_loss, DiceBCELoss
 from utils.schedulers import get_scheduler, create_lr_scheduler
@@ -33,9 +34,10 @@ def get_argparser():
                         help="path to CVC-ClinicDBDataset")
     parser.add_argument("--img_size", type=int, default=224, help="input size")
     parser.add_argument("--ignore_label", type=int, default=255, help="the dataset ignore_label")
+    parser.add_argument("--ignore_index", type=int, default=255, help="the dataset ignore_index")
     parser.add_argument("--dataset", type=str, default='kvasir & CVC-ClinicDB',
                         choices=['cityscapes', 'pascal', 'coco', 'synapse', 'kvasir & CVC-ClinicDB'], help='Name of dataset')
-    parser.add_argument("--num_classes", type=int, default=1, help="num classes (default: 2 for kvasir & CVC-ClinicDB)")
+    parser.add_argument("--num_classes", type=int, default=2, help="num classes (default: 2 for kvasir & CVC-ClinicDB)")
     parser.add_argument("--pin_mem", type=bool, default=True, help="Dataloader ping_memory")
     parser.add_argument("--batch_size", type=int, default=4, help='batch size (default: 4)')
     parser.add_argument("--val_batch_size", type=int, default=1, help='batch size for validation (default: 1)')
@@ -96,38 +98,48 @@ def main(args):
     # start = time.time()
     best_mIoU = 0.0
     best_F1 = 0.0
+    best_acc = 0.0
     device = args.device
 
     results_file = "results{}.txt".format(datetime.datetime.now().strftime("%Y%m%d-%H%M%S"))
 
     train_set, valid_set = build_dataset(args)
 
-    model = MSCAEfficientFormerV2(img_size=args.img_size, num_classes=args.num_classes)
-    model = model.to(device)
-    n_p = sum([p.numel() for p in model.parameters() if p.requires_grad])
-    print('********ESTABLISH ARCHITECTURE********')
-    print(f'Model: {args.model}, Number of parameters: {n_p}')
-
 
     if args.distributed:
-        sampler = DistributedSampler(train_set, dist.get_world_size(), dist.get_rank(), shuffle=True)
-        model = torch.nn.parallel.DistributedDataParallel(model, device_ids=[args.gpu])
+        sampler_train = DistributedSampler(train_set, num_replicas=dist.get_world_size(), rank=dist.get_rank(), shuffle=True)
+        sampler_val = DistributedSampler(valid_set)
     else:
-        sampler = RandomSampler(train_set)
+        sampler_train = RandomSampler(train_set)
+        sampler_val = torch.utils.data.SequentialSampler(valid_set)
 
     trainloader = DataLoader(train_set, batch_size=args.batch_size, num_workers=args.num_workers,
-                             drop_last=True, pin_memory=args.pin_mem, sampler=sampler)
+                             drop_last=True, pin_memory=args.pin_mem, sampler=sampler_train)
 
     valloader = DataLoader(valid_set, batch_size=args.val_batch_size, num_workers=args.num_workers,
-                           drop_last=True, pin_memory=args.pin_mem)
+                           drop_last=True, pin_memory=args.pin_mem, sampler=sampler_val)
 
-    # for a, b in trainloader:
-    #     print(a.size())
-    #     print(b.size())
-    #     break
+    model = MSCAEfficientFormerV2(img_size=args.img_size, num_classes=args.num_classes)
+    model = model.to(device)
 
-    loss_fn = DiceBCELoss()
-    optimizer = Lion(params=model.parameters(), lr=args.lr, weight_decay=args.weight_decay)
+    model_without_ddp = model
+    if args.distributed:
+        model = torch.nn.parallel.DistributedDataParallel(model, device_ids=[args.gpu], find_unused_parameters=True)
+        model_without_ddp = model.module
+    n_parameters = sum([p.numel() for p in model.parameters() if p.requires_grad])
+    print('********ESTABLISH ARCHITECTURE********')
+    print(f'Model: {args.model}\nNumber of parameters: {n_parameters}')
+    print('**************************************')
+
+
+    linear_scaled_lr = args.lr * args.batch_size * utils.get_world_size() / 512.0
+    # args.lr = linear_scaled_lr
+    #
+    # print('*****************')
+    # print('Initial LR is ', linear_scaled_lr)
+    # print('*****************')
+
+    optimizer = Lion(params=model_without_ddp.parameters(), lr=args.lr, weight_decay=args.weight_decay)
 
     # scheduler = get_scheduler(args.lr_scheduler, optimizer, args.epochs * iters_per_epoch, args.lr_power,
     #                           iters_per_epoch * args.lr_warmup, args.lr_warmup_ratio)
@@ -147,6 +159,7 @@ def main(args):
         scheduler.load_state_dict(checkpoint["scheduler_state"])
         best_mIoU = checkpoint['best_mIoU']
         best_F1 = checkpoint['F1_Score']
+        best_ACC = checkpoint['Acc']
         optimizer.load_state_dict(checkpoint["optimizer_state"])
         if 'scaler' in checkpoint:
             loss_scaler.load_state_dict(checkpoint['scaler'])
@@ -157,24 +170,27 @@ def main(args):
                     state[k] = v.cuda()
 
         print(f'The Best MeanIou is {best_mIoU:.4f}')
+        print(f'The Best best_F1 is {best_F1}')
+        print(f'The Best best_ACC is {best_ACC}')
 
     for epoch in range(args.epochs):
 
         if args.distributed:
             trainloader.sampler.set_epoch(epoch)
 
-        mean_loss, lr = train_one_epoch(model, optimizer, loss_fn, trainloader,
+        mean_loss, lr = train_one_epoch(model, optimizer, trainloader,
                                         epoch, device, args.train_print_freq, args.clip_grad, args.clip_mode,
-                                        loss_scaler)
+                                        loss_scaler, args)
 
-        confmat, mae_metric, f1_metric = evaluate(args, model, valloader, device, args.val_print_freq)
-        mae_info, f1_info = mae_metric.compute(), f1_metric.compute()
-        print(f"[epoch: {epoch}] val_MAE: {mae_info:.3f} val_maxF1: {f1_info:.3f}")
+        confmat, metric = evaluate(args, model, valloader, device, args.val_print_freq)
+        # mae_info, f1_info = mae_metric.compute(), f1_metric.compute()
+        all_f1, mean_f1 = metric.compute_f1()
+        all_acc, mean_acc = metric.compute_pixel_acc()
+        print(f"[epoch: {epoch}] val_meanF1: {mean_f1}\nval_meanACC: {mean_acc}")
 
         scheduler.step()
 
-        # val_info = str(confmat) + '\n' + str(mae_info) + '\n' + str(f1_info)
-        val_info = f'{str(confmat)}\nMAE: {mae_info:.3f}\nF1-Score: {f1_info:.3f}'
+        val_info = f'{str(confmat)}\nval_meanF1: {mean_f1}\nval_meanACC: {mean_acc}'
 
         print(val_info)
 
@@ -191,15 +207,16 @@ def main(args):
         if match:
             mean_iou = float(match.group(1))
 
-        if f1_info > best_F1:
-            best_F1 = f1_info
+        if mean_f1 > best_F1:
+            best_F1 = mean_f1
             checkpoint_save = {
                 "model_state": model.state_dict(),
                 "optimizer_state": optimizer.state_dict(),
                 "scheduler_state": scheduler.state_dict(),
                 "best_mIoU": mean_iou,
-                "F1_Score": round(f1_info, 3),
-                "MAE": round(mae_info, 3),
+                "F1_Score": mean_f1,
+                "Acc": mean_acc,
+                # "MAE": round(mae_info, 4),
                 "scaler": loss_scaler.state_dict()
             }
             torch.save(checkpoint_save, f'{args.save_weights_dir}/{args.model}_best_model_{best_mIoU}.pth')

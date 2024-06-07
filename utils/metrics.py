@@ -1,6 +1,7 @@
 import torch
 from torch import Tensor
 from typing import Tuple
+from torch import distributed as dist
 
 
 class Metrics:
@@ -34,3 +35,11 @@ class Metrics:
         acc *= 100
         macc *= 100
         return acc.cpu().numpy().round(2).tolist(), round(macc, 2)
+
+    def reduce_from_all_processes(self):
+        if not dist.is_available():
+            return
+        if not dist.is_initialized():
+            return
+        dist.barrier()
+        dist.all_reduce(self.hist)
