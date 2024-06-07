@@ -139,7 +139,7 @@ def main(args):
     # print('Initial LR is ', linear_scaled_lr)
     # print('*****************')
 
-    optimizer = Lion(params=model_without_ddp.parameters(), lr=args.lr, weight_decay=args.weight_decay)
+    optimizer = torch.optim.AdamW(params=model_without_ddp.parameters(), lr=args.lr, weight_decay=args.weight_decay)
 
     # scheduler = get_scheduler(args.lr_scheduler, optimizer, args.epochs * iters_per_epoch, args.lr_power,
     #                           iters_per_epoch * args.lr_warmup, args.lr_warmup_ratio)
@@ -210,7 +210,7 @@ def main(args):
         if mean_f1 > best_F1:
             best_F1 = mean_f1
             checkpoint_save = {
-                "model_state": model.state_dict(),
+                "model_state": model_without_ddp.state_dict(),
                 "optimizer_state": optimizer.state_dict(),
                 "scheduler_state": scheduler.state_dict(),
                 "best_mIoU": mean_iou,

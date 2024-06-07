@@ -146,10 +146,7 @@ class MeanAbsoluteError(object):
         self.mae_list = []
 
     def update(self, pred: torch.Tensor, gt: torch.Tensor):
-        if gt.ndimension() == 4:
-            batch_size, c, h, w = gt.shape
-        else:
-            batch_size, h, w = gt.shape
+        batch_size, c, h, w = gt.shape
         assert batch_size == 1, f"validation mode batch_size must be 1, but got batch_size: {batch_size}."
         resize_pred = F.interpolate(pred, (h, w), mode="bilinear", align_corners=False)
         error_pixels = torch.sum(torch.abs(resize_pred - gt), dim=(1, 2, 3)) / (h * w)
@@ -187,10 +184,7 @@ class F1Score(object):
         self.threshold = threshold
 
     def update(self, pred: torch.Tensor, gt: torch.Tensor):
-        if gt.ndimension() == 4:
-            batch_size, c, h, w = gt.shape
-        else:
-            batch_size, h, w = gt.shape
+        batch_size, c, h, w = gt.shape
         assert batch_size == 1, f"validation mode batch_size must be 1, but got batch_size: {batch_size}."
         resize_pred = F.interpolate(pred, (h, w), mode="bilinear", align_corners=False)
         gt_num = torch.sum(torch.gt(gt, self.threshold).float())
