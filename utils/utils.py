@@ -39,14 +39,17 @@ def get_model_size(model: Union[nn.Module, torch.jit.ScriptModule]):
     os.remove(tmp_model_path)
     return size / 1e6   # in MB
 
+
 @torch.no_grad()
 def test_model_latency(model: nn.Module, inputs: torch.Tensor, use_cuda: bool = False) -> float:
     with profiler.profile(use_cuda=use_cuda) as prof:
         _ = model(inputs)
     return prof.self_cpu_time_total / 1000  # ms
 
+
 def count_parameters(model: nn.Module) -> float:
     return sum(p.numel() for p in model.parameters() if p.requires_grad) / 1e6      # in M
+
 
 def setup_ddp() -> int:
     if 'RANK' in os.environ and 'WORLD_SIZE' in os.environ:

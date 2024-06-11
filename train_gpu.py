@@ -49,7 +49,7 @@ def get_argparser():
 
     # Train Options
     # parser.add_argument("--amp", type=bool, default=True, help='auto mixture precision')
-    parser.add_argument("--epochs", type=int, default=2, help='total training epochs')
+    parser.add_argument("--epochs", type=int, default=5, help='total training epochs')
     parser.add_argument("--device", type=str, default='cuda', help='device (cuda:0 or cpu)')
     parser.add_argument("--num_workers", type=int, default=0, help='num_workers, set it equal 0 when run programs in windows platform')
     parser.add_argument("--train_print_freq", type=int, default=100)
@@ -79,7 +79,6 @@ def get_argparser():
                         help="restore from checkpoint")
     parser.add_argument("--resume", type=bool, default=False)
     parser.add_argument("--save_dir", type=str, default='./', help='SummaryWriter save dir')
-    # parser.add_argument("--gpu_id", type=str, default='0', help="GPU ID")
 
     # training parameters
     parser.add_argument('--world_size', default=1, type=int, help='number of distributed processes')
@@ -170,9 +169,10 @@ def main(args):
                 if isinstance(v, torch.Tensor):
                     state[k] = v.cuda()
 
-        print(f'The Best MeanIou is {best_mIoU:.4f}')
-        print(f'The Best best_F1 is {best_F1}')
-        print(f'The Best best_ACC is {best_ACC}')
+
+        print(f'The Best MeanIou is {best_mIoU:.4f}\n')
+        print(f'The Best best_F1 is {best_F1}\n')
+        print(f'The Best best_ACC is {best_ACC}\n')
 
     for epoch in range(args.epochs):
 
@@ -187,7 +187,7 @@ def main(args):
         # mae_info, f1_info = mae_metric.compute(), f1_metric.compute()
         all_f1, mean_f1 = metric.compute_f1()
         all_acc, mean_acc = metric.compute_pixel_acc()
-        print(f"[epoch: {epoch}] val_meanF1: {mean_f1}\nval_meanACC: {mean_acc}")
+        print(f"[epoch: {epoch}]\tval_meanF1: {mean_f1}\tval_meanACC: {mean_acc}\n")
 
         scheduler.step()
 
@@ -208,8 +208,10 @@ def main(args):
         if match:
             mean_iou = float(match.group(1))
 
-        if mean_f1 > best_F1:
-            best_F1 = mean_f1
+        if mean_iou > best_mIoU:
+            print(f'Increasing mIoU: from {best_mIoU} to {mean_iou}!\n')
+            print('******************Save Checkpoint******************\n')
+            best_mIoU = mean_iou
             checkpoint_save = {
                 "model_state": model_without_ddp.state_dict(),
                 "optimizer_state": optimizer.state_dict(),
